@@ -1,36 +1,84 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ClawWorks
+
+Manage a team of Claude Code agents from your browser. Each agent runs in its own terminal with a unique persona and can communicate with teammates via the Claude Peers MCP server.
+
+## Features
+
+- **Workspaces** — organize agents into named workspaces, create/rename/delete them
+- **Multi-agent grid** — spawn multiple agents per workspace in a responsive grid layout (1-6+ agents)
+- **Persona system** — each agent gets a random name and one of three personality templates (damien-voss, shy-guy, average-joe)
+- **Agent communication** — agents discover and message each other via claude-peers MCP
+- **Folder picker** — choose which directory each agent works in
+- **Auto-initialization** — agents auto-launch Claude Code, accept prompts, and introduce themselves
+- **Graceful shutdown** — agents say goodbye to peers before being terminated
+- **Persistent state** — workspaces and terminals are stored in SQLite, surviving restarts
+- **Startup checks** — splash screen verifies Claude Code and Claude Peers are available
+
+## Tech Stack
+
+- **Next.js** (App Router) with TypeScript and Tailwind CSS
+- **xterm.js** for browser-side terminal emulation
+- **node-pty** for spawning real PTY shell processes
+- **WebSocket** (`ws`) for real-time browser-to-shell communication
+- **better-sqlite3** for workspace and terminal persistence
+- **claude-peers-mcp** for agent-to-agent messaging via MCP
+
+## Prerequisites
+
+- [Node.js](https://nodejs.org/) (v22+)
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) — the splash screen will verify Claude Code is installed, then show a usage disclaimer. Click **Agree** to enter the app.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How It Works
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. A custom Node.js server (`server.ts`) serves the Next.js frontend and exposes a WebSocket endpoint at `/api/terminal`
+2. When you create an agent, the server spawns a PTY process, auto-runs `claude` with a persona and MCP config
+3. The server's state machine auto-accepts trust prompts and development channel warnings
+4. Agents connect to the claude-peers broker (port 7999) to discover and message each other
+5. The browser renders each agent in an xterm.js terminal with status overlays and graceful shutdown
 
-## Learn More
+## API Endpoints
 
-To learn more about Next.js, take a look at the following resources:
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/system-check` | Environment health check (Claude Code, Claude Peers) |
+| `GET` | `/api/dirs` | Directory listing for folder picker |
+| `GET` | `/api/personas` | Available persona templates |
+| `GET` | `/api/state` | Full app state (workspaces + terminals) |
+| `POST` | `/api/workspaces` | Create a workspace |
+| `PATCH` | `/api/workspaces/:id` | Rename a workspace |
+| `DELETE` | `/api/workspaces/:id` | Delete a workspace |
+| `DELETE` | `/api/terminals/:id` | Delete a terminal |
+| `WS` | `/api/terminal` | WebSocket — spawns a PTY session |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Project Structure
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+server.ts                       # Custom server (WebSocket, REST API, auto-interaction)
+src/
+  app/
+    layout.tsx                  # Root layout with font imports (Inter, JetBrains Mono)
+    page.tsx                    # Main page (workspaces, tabs, splash screen)
+    globals.css                 # Global styles, Tailwind theme tokens
+  components/
+    Button.tsx                  # Reusable button (6 variants, 3 sizes)
+    SplashScreen.tsx            # Startup environment checks
+    Sidebar.tsx                 # Workspace navigation
+    TerminalGrid.tsx            # Multi-agent grid layout
+    Terminal.tsx                # xterm.js terminal wrapper
+    FolderPicker.tsx            # Directory browser
+  lib/
+    tab-names.ts               # Random workspace name generator
+    db.ts                      # SQLite database (workspaces, terminals)
+claude-peers/                   # Bundled claude-peers MCP server (port 7999)
+static/persona/                 # Agent persona templates
+public/clawworks.png            # Logo
+```
