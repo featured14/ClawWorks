@@ -1,4 +1,8 @@
-# ClawWorks
+<p align="center">
+  <img src="public/clawworks.png" alt="ClawWorks" width="120" />
+</p>
+
+<h1 align="center">ClawWorks</h1>
 
 Manage a team of Claude Code agents from your browser. Each agent runs in its own terminal with a unique persona and can communicate with teammates via the Claude Peers MCP server.
 
