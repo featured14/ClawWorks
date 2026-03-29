@@ -362,19 +362,3 @@ app.prepare().then(() => {
   });
 });
 
-function shutdown() {
-  for (const p of activePtys) {
-    try { p.kill(); } catch {}
-  }
-  process.exit(0);
-}
-
-// Next.js replaces SIGINT handlers during compilation — keep re-registering ours
-function ensureShutdownHandler() {
-  process.removeAllListeners("SIGINT");
-  process.removeAllListeners("SIGTERM");
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
-}
-ensureShutdownHandler();
-setInterval(ensureShutdownHandler, 2000);
