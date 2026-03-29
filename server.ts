@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import { execSync } from "child_process";
 import { randomBytes } from "crypto";
-import { mkdtempSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import next from "next";
@@ -18,16 +18,7 @@ const PERSONA_NAMES = [
   "Ezra Thorne", "Levi Rune", "Orion Steele", "Felix Ashworth", "Tobias Crane",
 ];
 
-function buildClaudeCommand(workspaceId?: string, requestedName?: string, persona: string = "damien-voss"): { command: string; name: string; tempPersonaPath: string; tempMcpConfigPath: string } {
-  const personaPath = join(process.cwd(), "static", "persona", `${persona}.md`);
-  const raw = readFileSync(personaPath, "utf-8");
-  const name = requestedName || PERSONA_NAMES[Math.floor(Math.random() * PERSONA_NAMES.length)];
-  const content = raw.replace(/\<\$NAME\>/g, name);
-  // Write persona with name substituted to a temp file
-  const tempDir = mkdtempSync(join(tmpdir(), "claude-persona-"));
-  const tempPersonaPath = join(tempDir, "persona.md");
-  writeFileSync(tempPersonaPath, content);
-  // Write MCP config to a per-agent temp file (avoids race conditions)
+function buildMcpConfig(workspaceId?: string): { tempMcpConfigPath: string } {
   const peerServerPath = join(process.cwd(), "claude-peers", "server.ts");
   const peerDbPath = join(process.cwd(), "claude-peers", "peers.db");
   const tsxPath = join(process.cwd(), "node_modules", ".bin", "tsx");
@@ -47,8 +38,18 @@ function buildClaudeCommand(workspaceId?: string, requestedName?: string, person
       },
     },
   }, null, 2));
-  const claudeBin = getAllSettings().claude_command || "claude";
-  return { command: `${claudeBin} --model sonnet --append-system-prompt-file "${tempPersonaPath}" --mcp-config "${tempMcpConfigPath}" --dangerously-load-development-channels server:claude-peers`, name, tempPersonaPath, tempMcpConfigPath };
+  return { tempMcpConfigPath };
+}
+
+function buildPersonaFile(persona: string = "damien-voss", requestedName?: string): { name: string; tempPersonaPath: string } {
+  const personaPath = join(process.cwd(), "static", "persona", `${persona}.md`);
+  const raw = readFileSync(personaPath, "utf-8");
+  const name = requestedName || PERSONA_NAMES[Math.floor(Math.random() * PERSONA_NAMES.length)];
+  const content = raw.replace(/\<\$NAME\>/g, name);
+  const tempDir = mkdtempSync(join(tmpdir(), "claude-persona-"));
+  const tempPersonaPath = join(tempDir, "persona.md");
+  writeFileSync(tempPersonaPath, content);
+  return { name, tempPersonaPath };
 }
 
 const dev = process.env.NODE_ENV !== "production";
@@ -221,22 +222,42 @@ app.prepare().then(() => {
     const persona = (query.persona as string) || "damien-voss";
     const resumeSession = query.resume as string | undefined;
     const shell = process.env.SHELL || "zsh";
+
+    // For zsh: create a ZDOTDIR wrapper that sources the real .zshrc then disables
+    // history before any interactive commands run — so nothing appears in history.
+    const shellEnv: Record<string, string> = { ...process.env as Record<string, string>, HISTFILE: "/dev/null" };
+    let tempZdotdir: string | null = null;
+    if (shell.endsWith("zsh")) {
+      tempZdotdir = mkdtempSync(join(tmpdir(), "clawworks-zdot-"));
+      const realZshrc = join(process.env.HOME || "", ".zshrc");
+      writeFileSync(join(tempZdotdir, ".zshrc"), [
+        `[ -f "${realZshrc}" ] && source "${realZshrc}"`,
+        "HISTFILE=/dev/null",
+        "SAVEHIST=0",
+        "HISTSIZE=0",
+        "unsetopt INC_APPEND_HISTORY SHARE_HISTORY 2>/dev/null || true",
+      ].join("\n") + "\n");
+      shellEnv.ZDOTDIR = tempZdotdir;
+    }
+
     const ptyProcess = pty.spawn(shell, [], {
       name: "xterm-256color",
       cols: 80,
       rows: 24,
       cwd,
-      env: process.env as Record<string, string>,
+      env: shellEnv,
     });
 
     activePtys.add(ptyProcess);
 
-    const { command: claudeCommand, name: personaName, tempPersonaPath, tempMcpConfigPath } = buildClaudeCommand(workspaceId, requestedName, persona);
+    const claudeBin = getAllSettings().claude_command || "claude";
+    const { tempMcpConfigPath } = buildMcpConfig(workspaceId);
+    const { name: personaName, tempPersonaPath } = buildPersonaFile(persona, requestedName);
 
-    // For resume, build command with --resume flag
-    const resumeCommand = resumeSession
-      ? `${(getAllSettings().claude_command || "claude")} --model sonnet --resume "${resumeSession}" --append-system-prompt-file "${tempPersonaPath}" --mcp-config "${tempMcpConfigPath}" --dangerously-load-development-channels server:claude-peers`
-      : null;
+    // Build the claude command: resume includes both --resume and --append-system-prompt-file for resilience
+    const claudeCommand = resumeSession
+      ? `${claudeBin} --model sonnet --resume "${resumeSession}" --append-system-prompt-file "${tempPersonaPath}" --mcp-config "${tempMcpConfigPath}" --dangerously-load-development-channels server:claude-peers`
+      : `${claudeBin} --model sonnet --append-system-prompt-file "${tempPersonaPath}" --mcp-config "${tempMcpConfigPath}" --dangerously-load-development-channels server:claude-peers`;
 
     // Send persona name as metadata to client (for new terminals)
     if (!resumeSession) {
@@ -273,12 +294,13 @@ app.prepare().then(() => {
         claudeLaunched = true;
         outputBuffer = "";
         setTimeout(() => {
-          const cmd = resumeCommand || claudeCommand;
+          const cmd = claudeCommand;
           ptyProcess.write(cmd + "\r");
           // Clean up temp files after command is sent
           setTimeout(() => {
             try { unlinkSync(tempPersonaPath); } catch {}
             try { unlinkSync(tempMcpConfigPath); } catch {}
+            if (tempZdotdir) try { rmSync(tempZdotdir, { recursive: true }); } catch {}
           }, 5000);
         }, 200);
         return;

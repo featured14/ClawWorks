@@ -291,6 +291,7 @@ export default function Home() {
               personaName: t.persona_name,
               renameHash: t.rename_hash,
               persona: t.persona,
+              requestedName: t.persona_name,
             })),
           }));
           setTabs(hydrated);
@@ -338,7 +339,7 @@ export default function Home() {
                   onShout={(msg) => gridRefs.current[tab.id]?.broadcastCommand(msg)}
                   defaultDirectory={defaultDirectory}
                 />
-                <div className="mt-4 flex w-full flex-1 overflow-y-auto">
+                <div className="mt-4 flex w-full flex-1 overflow-hidden">
                   {tab.terminals.length === 0 ? (
                     <EmptyTerminals tabId={tab.id} onAddTerminal={handleAddTerminal} defaultDirectory={defaultDirectory} />
                   ) : (

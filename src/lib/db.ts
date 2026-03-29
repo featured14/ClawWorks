@@ -32,6 +32,11 @@ export function getDb(): Database.Database {
       );
     `);
 
+    // Seed default settings on first run (INSERT OR IGNORE is a no-op if row exists)
+    db.exec(`
+      INSERT OR IGNORE INTO settings (key, value) VALUES ('claude_command', 'claude');
+    `);
+
     // Migration: add persona column if missing
     const cols = db.prepare("PRAGMA table_info(terminals)").all() as { name: string }[];
     if (!cols.some((c) => c.name === "persona")) {
