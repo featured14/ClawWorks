@@ -1,15 +1,17 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { Folder } from "lucide-react";
 import { Button } from "@/components/Button";
 
 interface FolderPickerProps {
   onSelect: (path: string, agentName?: string, persona?: string) => void;
   onClose: () => void;
+  initialPath?: string;
 }
 
-export default function FolderPicker({ onSelect, onClose }: FolderPickerProps) {
-  const [currentPath, setCurrentPath] = useState(() => localStorage.getItem("lastTerminalFolder") || "~");
+export default function FolderPicker({ onSelect, onClose, initialPath }: FolderPickerProps) {
+  const [currentPath, setCurrentPath] = useState(() => initialPath || localStorage.getItem("lastTerminalFolder") || "~");
   const [pathDraft, setPathDraft] = useState(currentPath);
   const [dirs, setDirs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -107,9 +109,7 @@ export default function FolderPicker({ onSelect, onClose }: FolderPickerProps) {
               onClick={() => navigateTo(dir)}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 transition-colors hover:bg-charcoal"
             >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" className="shrink-0 text-zinc-500">
-                <path d="M1.5 3.5v7a1 1 0 001 1h9a1 1 0 001-1v-5a1 1 0 00-1-1H7L5.5 3.5H2.5a1 1 0 00-1 0z" />
-              </svg>
+              <Folder size={14} className="shrink-0 text-zinc-500" />
               <span className="truncate">{dir}</span>
             </button>
           ))

@@ -26,6 +26,10 @@ export function getDb(): Database.Database {
         persona TEXT NOT NULL DEFAULT 'damien-voss',
         FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
       );
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
     `);
 
     // Migration: add persona column if missing
@@ -87,4 +91,21 @@ export function insertTerminal(id: string, workspaceId: string, cwd: string, per
 
 export function deleteTerminal(id: string): void {
   getDb().prepare("DELETE FROM terminals WHERE id = ?").run(id);
+}
+
+export function getAllSettings(): Record<string, string> {
+  const rows = getDb().prepare("SELECT key, value FROM settings").all() as { key: string; value: string }[];
+  const result: Record<string, string> = {};
+  for (const row of rows) result[row.key] = row.value;
+  return result;
+}
+
+export function upsertSettings(settings: Record<string, string>): void {
+  const stmt = getDb().prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+  const tx = getDb().transaction(() => {
+    for (const [key, value] of Object.entries(settings)) {
+      stmt.run(key, value);
+    }
+  });
+  tx();
 }

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, forwardRef, useImperativeHandle } from "react";
 import dynamic from "next/dynamic";
+import { X } from "lucide-react";
 import { Button } from "@/components/Button";
 import type { TerminalHandle } from "@/components/Terminal";
 
@@ -221,11 +222,7 @@ export default forwardRef<TerminalGridHandle, TerminalGridProps>(function Termin
                 onClick={() => handleCloseClick(term.id)}
                 disabled={isShuttingDown}
                 aria-label="Kill agent"
-                icon={
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                    <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" />
-                  </svg>
-                }
+                icon={<X size={14} />}
               />
             </div>
 

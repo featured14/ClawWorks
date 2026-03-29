@@ -8,7 +8,9 @@ import next from "next";
 import { parse } from "url";
 import { WebSocketServer, WebSocket } from "ws";
 import * as pty from "node-pty";
-import { getDb, getAllState, insertWorkspace, updateWorkspaceName, deleteWorkspace, insertTerminal, deleteTerminal } from "./src/lib/db";
+import { getDb, getAllState, insertWorkspace, updateWorkspaceName, deleteWorkspace, insertTerminal, deleteTerminal, getAllSettings, upsertSettings } from "./src/lib/db";
+
+const activePtys = new Set<pty.IPty>();
 
 const PERSONA_NAMES = [
   "Damien Voss", "Marcus Hale", "Viktor Sable", "Adrian Cross", "Roman Ashe",
@@ -45,7 +47,8 @@ function buildClaudeCommand(workspaceId?: string, requestedName?: string, person
       },
     },
   }, null, 2));
-  return { command: `claude --model sonnet --append-system-prompt-file "${tempPersonaPath}" --mcp-config "${tempMcpConfigPath}" --dangerously-load-development-channels server:claude-peers`, name, tempPersonaPath, tempMcpConfigPath };
+  const claudeBin = getAllSettings().claude_command || "claude";
+  return { command: `${claudeBin} --model sonnet --append-system-prompt-file "${tempPersonaPath}" --mcp-config "${tempMcpConfigPath}" --dangerously-load-development-channels server:claude-peers`, name, tempPersonaPath, tempMcpConfigPath };
 }
 
 const dev = process.env.NODE_ENV !== "production";
@@ -85,7 +88,9 @@ app.prepare().then(() => {
 
       // Check: Claude Code installed
       try {
-        const version = execSync("claude --version", { timeout: 5000, encoding: "utf-8" }).trim();
+        const claudeBin = getAllSettings().claude_command || "claude";
+        const userShell = process.env.SHELL || "/bin/zsh";
+        const version = execSync(`${userShell} -ic '${claudeBin.replace(/'/g, "'\\''")} --version'`, { timeout: 5000, encoding: "utf-8" }).trim();
         checks.push({ name: "Claude Code", status: "ok", detail: version });
       } catch {
         checks.push({ name: "Claude Code", status: "error", detail: "Not installed. Run: npm install -g @anthropic-ai/claude-code" });
@@ -98,7 +103,8 @@ app.prepare().then(() => {
     // API: list directories
     if (parsed.pathname === "/api/dirs") {
       const rawDir = (parsed.query.path as string) || "~";
-      const dir = rawDir === "~" ? (process.env.HOME || "/") : rawDir;
+      const home = process.env.HOME || "/";
+      const dir = rawDir === "~" ? home : rawDir.startsWith("~/") ? home + rawDir.slice(1) : rawDir;
       res.setHeader("Content-Type", "application/json");
       try {
         const entries = readdirSync(dir)
@@ -174,6 +180,20 @@ app.prepare().then(() => {
       return;
     }
 
+    // API: settings
+    if (parsed.pathname === "/api/settings") {
+      if (req.method === "GET") {
+        json(res, getAllSettings());
+        return;
+      }
+      if (req.method === "PUT") {
+        const body = await readJsonBody(req);
+        upsertSettings(body as Record<string, string>);
+        json(res, { ok: true });
+        return;
+      }
+    }
+
     handle(req, res, parsed);
   });
 
@@ -209,11 +229,13 @@ app.prepare().then(() => {
       env: process.env as Record<string, string>,
     });
 
+    activePtys.add(ptyProcess);
+
     const { command: claudeCommand, name: personaName, tempPersonaPath, tempMcpConfigPath } = buildClaudeCommand(workspaceId, requestedName, persona);
 
     // For resume, build command with --resume flag
     const resumeCommand = resumeSession
-      ? `claude --model sonnet --resume "${resumeSession}" --append-system-prompt-file "${tempPersonaPath}" --mcp-config "${tempMcpConfigPath}" --dangerously-load-development-channels server:claude-peers`
+      ? `${(getAllSettings().claude_command || "claude")} --model sonnet --resume "${resumeSession}" --append-system-prompt-file "${tempPersonaPath}" --mcp-config "${tempMcpConfigPath}" --dangerously-load-development-channels server:claude-peers`
       : null;
 
     // Send persona name as metadata to client (for new terminals)
@@ -263,7 +285,7 @@ app.prepare().then(() => {
       }
 
       // Stage 1a: auto-accept trust prompt
-      if (claudeLaunched && !trustHandled && clean.includes("Itrustthisfolder")) {
+      if (claudeLaunched && !trustHandled && clean.replace(/\s+/g, "").includes("Itrustthisfolder")) {
         trustHandled = true;
         outputBuffer = "";
         setTimeout(() => ptyProcess.write("\r"), 100);
@@ -271,7 +293,7 @@ app.prepare().then(() => {
       }
 
       // Stage 1b: auto-accept development channels warning (can appear before or after trust prompt)
-      if (claudeLaunched && !channelsHandled && clean.includes("Iamusingthisforlocaldevelopment")) {
+      if (claudeLaunched && !channelsHandled && clean.replace(/\s+/g, "").includes("Iamusingthisforlocaldevelopment")) {
         channelsHandled = true;
         outputBuffer = "";
         setTimeout(() => ptyProcess.write("\r"), 100);
@@ -330,6 +352,7 @@ app.prepare().then(() => {
     });
 
     ptyProcess.onExit(() => {
+      activePtys.delete(ptyProcess);
       ws.close();
     });
   });
@@ -338,3 +361,20 @@ app.prepare().then(() => {
     console.log(`> Ready on http://localhost:${port}`);
   });
 });
+
+function shutdown() {
+  for (const p of activePtys) {
+    try { p.kill(); } catch {}
+  }
+  process.exit(0);
+}
+
+// Next.js replaces SIGINT handlers during compilation — keep re-registering ours
+function ensureShutdownHandler() {
+  process.removeAllListeners("SIGINT");
+  process.removeAllListeners("SIGTERM");
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+}
+ensureShutdownHandler();
+setInterval(ensureShutdownHandler, 2000);

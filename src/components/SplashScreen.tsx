@@ -1,7 +1,39 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/Button";
+
+function CopyBlock({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = useCallback(() => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }, [text]);
+
+  return (
+    <div className="group relative mt-3">
+      <pre className="rounded-md bg-black/40 px-4 py-3 pr-10 text-sm text-zinc-300">
+        {text}
+      </pre>
+      <button
+        type="button"
+        onClick={copy}
+        className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-zinc-500 hover:text-zinc-300 transition-colors"
+        aria-label="Copy to clipboard"
+      >
+        {copied ? (
+          <Check size={16} />
+        ) : (
+          <Copy size={16} />
+        )}
+      </button>
+    </div>
+  );
+}
 
 interface SplashScreenProps {
   onReady: () => void;
@@ -75,20 +107,16 @@ export default function SplashScreen({ onReady }: SplashScreenProps) {
         )}
 
         {status === "error" && (
-          <div className="w-96 rounded-lg border border-border-subtle bg-forge-mid p-6">
+          <div className="w-[28rem] rounded-lg border border-border-subtle bg-forge-mid p-6">
             <p className="text-sm font-medium text-red-400">Claude Code not found</p>
             <p className="mt-3 text-sm text-zinc-400">
               ClawWorks requires the Claude Code CLI to run agents. Install it with:
             </p>
-            <pre className="mt-3 rounded-md bg-black/40 px-4 py-3 text-sm text-zinc-300">
-              npm install -g @anthropic-ai/claude-code
-            </pre>
+            <CopyBlock text="npm install -g @anthropic-ai/claude-code" />
             <p className="mt-3 text-sm text-zinc-500">
               After installing, verify it works by running:
             </p>
-            <pre className="mt-2 rounded-md bg-black/40 px-4 py-3 text-sm text-zinc-300">
-              claude --version
-            </pre>
+            <CopyBlock text="claude --version" />
             <Button
               variant="secondary"
               size="md"

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { X, Settings } from "lucide-react";
 import { Button } from "@/components/Button";
 
 interface Tab {
@@ -15,9 +16,10 @@ interface SidebarProps {
   onSelectTab: (id: string) => void;
   onNewTab: () => void;
   onCloseTab: (id: string) => void;
+  onSettings: () => void;
 }
 
-export default function Sidebar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab }: SidebarProps) {
+export default function Sidebar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, onSettings }: SidebarProps) {
   const [confirmTabId, setConfirmTabId] = useState<string | null>(null);
   const confirmTab = tabs.find((t) => t.id === confirmTabId);
 
@@ -28,7 +30,18 @@ export default function Sidebar({ tabs, activeTabId, onSelectTab, onNewTab, onCl
         <h1 className="text-lg font-semibold text-zinc-300">ClawWorks</h1>
       </div>
 
-      <div className="px-4 pb-2">
+      <div className="px-2 pb-1">
+        <Button
+          variant="secondary"
+          size="sm"
+          className="w-full"
+          onClick={onNewTab}
+        >
+          + New Workspace
+        </Button>
+      </div>
+
+      <div className="px-4 pb-2 pt-2">
         <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">
           Workspaces ({tabs.length})
         </span>
@@ -64,11 +77,7 @@ export default function Sidebar({ tabs, activeTabId, onSelectTab, onNewTab, onCl
               }}
               className="mr-1 opacity-0 transition-opacity group-hover:opacity-100"
               aria-label={`Close ${tab.name}`}
-              icon={
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                  <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" />
-                </svg>
-              }
+              icon={<X size={14} />}
             />
           </div>
         ))}
@@ -79,9 +88,10 @@ export default function Sidebar({ tabs, activeTabId, onSelectTab, onNewTab, onCl
           variant="secondary"
           size="md"
           className="w-full"
-          onClick={onNewTab}
+          onClick={onSettings}
+          icon={<Settings size={16} />}
         >
-          + New Workspace
+          Settings
         </Button>
       </div>
 

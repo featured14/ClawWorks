@@ -5,6 +5,8 @@ import Sidebar from "@/components/Sidebar";
 import TerminalGrid, { type TerminalGridHandle } from "@/components/TerminalGrid";
 import FolderPicker from "@/components/FolderPicker";
 import SplashScreen from "@/components/SplashScreen";
+import Settings from "@/components/Settings";
+import { Pencil } from "lucide-react";
 import { Button } from "@/components/Button";
 import { generateTabName } from "@/lib/tab-names";
 
@@ -25,7 +27,7 @@ interface Tab {
 
 const DEFAULT_CWD = "~";
 
-function TopBar({ tabName, tabId, terminalCount, onAddTerminal, onRename, onShout }: { tabName: string; tabId: string; terminalCount: number; onAddTerminal: (tabId: string, cwd: string, agentName?: string, persona?: string) => void; onRename: (id: string, name: string) => void; onShout: (msg: string) => void }) {
+function TopBar({ tabName, tabId, terminalCount, onAddTerminal, onRename, onShout, defaultDirectory }: { tabName: string; tabId: string; terminalCount: number; onAddTerminal: (tabId: string, cwd: string, agentName?: string, persona?: string) => void; onRename: (id: string, name: string) => void; onShout: (msg: string) => void; defaultDirectory?: string }) {
   const [showPicker, setShowPicker] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(tabName);
@@ -66,11 +68,7 @@ function TopBar({ tabName, tabId, terminalCount, onAddTerminal, onRename, onShou
               iconOnly
               onClick={() => { setDraft(tabName); setEditing(true); }}
               aria-label="Rename workspace"
-              icon={
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M8.5 1.5l2 2M1 11l.5-2L9 1.5l2 2L3.5 11 1 11z" />
-                </svg>
-              }
+              icon={<Pencil size={12} />}
             />
           </>
         )}
@@ -139,6 +137,7 @@ function TopBar({ tabName, tabId, terminalCount, onAddTerminal, onRename, onShou
               setShowPicker(false);
             }}
             onClose={() => setShowPicker(false)}
+            initialPath={terminalCount === 0 ? defaultDirectory : undefined}
           />
         )}
         </div>
@@ -147,7 +146,7 @@ function TopBar({ tabName, tabId, terminalCount, onAddTerminal, onRename, onShou
   );
 }
 
-function EmptyTerminals({ tabId, onAddTerminal }: { tabId: string; onAddTerminal: (tabId: string, cwd: string, agentName?: string, persona?: string) => void }) {
+function EmptyTerminals({ tabId, onAddTerminal, defaultDirectory }: { tabId: string; onAddTerminal: (tabId: string, cwd: string, agentName?: string, persona?: string) => void; defaultDirectory?: string }) {
   const [showPicker, setShowPicker] = useState(false);
 
   return (
@@ -167,6 +166,7 @@ function EmptyTerminals({ tabId, onAddTerminal }: { tabId: string; onAddTerminal
               setShowPicker(false);
             }}
             onClose={() => setShowPicker(false)}
+            initialPath={defaultDirectory}
           />
         )}
       </div>
@@ -249,8 +249,32 @@ export default function Home() {
     );
   };
 
+  const [defaultDirectory, setDefaultDirectory] = useState<string | undefined>(undefined);
+
+  const refreshDefaultDirectory = () => {
+    fetch("/api/settings").then((r) => r.json()).then((data) => {
+      if (data.default_agent_directory) setDefaultDirectory(data.default_agent_directory);
+    }).catch(() => {});
+  };
+
+  const [showSettings, setShowSettings] = useState(false);
+
+  useEffect(() => {
+    if (!showSettings) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowSettings(false);
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [showSettings]);
+
   const [ready, setReady] = useState(false);
   const [stateLoaded, setStateLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!ready) return;
+    refreshDefaultDirectory();
+  }, [ready]);
 
   useEffect(() => {
     if (!ready || stateLoaded) return;
@@ -286,9 +310,10 @@ export default function Home() {
       <Sidebar
         tabs={tabs.map((t) => ({ id: t.id, name: t.name, terminalCount: t.terminals.length }))}
         activeTabId={activeTabId}
-        onSelectTab={setActiveTabId}
-        onNewTab={handleNewTab}
+        onSelectTab={(id) => { setActiveTabId(id); setShowSettings(false); }}
+        onNewTab={() => { handleNewTab(); setShowSettings(false); }}
         onCloseTab={handleCloseTab}
+        onSettings={() => setShowSettings(true)}
       />
       <main className="relative flex-1 overflow-hidden">
         {tabs.length === 0 ? (
@@ -311,10 +336,11 @@ export default function Home() {
                   onAddTerminal={handleAddTerminal}
                   onRename={handleRenameTab}
                   onShout={(msg) => gridRefs.current[tab.id]?.broadcastCommand(msg)}
+                  defaultDirectory={defaultDirectory}
                 />
                 <div className="mt-4 flex w-full flex-1 overflow-y-auto">
                   {tab.terminals.length === 0 ? (
-                    <EmptyTerminals tabId={tab.id} onAddTerminal={handleAddTerminal} />
+                    <EmptyTerminals tabId={tab.id} onAddTerminal={handleAddTerminal} defaultDirectory={defaultDirectory} />
                   ) : (
                     <TerminalGrid
                       ref={(handle) => { gridRefs.current[tab.id] = handle; }}
@@ -331,6 +357,16 @@ export default function Home() {
           })
         )}
       </main>
+      {showSettings && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => { setShowSettings(false); refreshDefaultDirectory(); }}
+        >
+          <div className="h-[80%] w-[80%]" onClick={(e) => e.stopPropagation()}>
+            <Settings onBack={() => { setShowSettings(false); refreshDefaultDirectory(); }} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
